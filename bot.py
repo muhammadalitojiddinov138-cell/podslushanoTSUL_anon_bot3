@@ -1,12 +1,15 @@
 import logging
 import os
+import threading
+import time
+import requests
 from threading import Thread
 from flask import Flask
 from aiogram import Bot, Dispatcher, types
 from aiogram.types import ContentType
 from aiogram.utils import executor
 
-# Получаем переменные окружения
+# Переменные окружения
 API_TOKEN = os.getenv("API_TOKEN")
 ADMIN_ID = int(os.getenv("ADMIN_ID"))
 
@@ -15,7 +18,7 @@ logging.basicConfig(level=logging.INFO)
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher(bot)
 
-# Фейковый веб-сервер для Render (чтобы не падал по "портам")
+# Flask для Render
 app = Flask(__name__)
 
 @app.route("/")
@@ -26,7 +29,20 @@ def run_flask():
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
 
-# Обработка всех типов сообщений и пересылка админу
+# ====== AUTOPING ======
+def keep_alive():
+    url = f"https://{os.getenv('RENDER_EXTERNAL_URL', '')}"
+    if not url:
+        url = "https://<твой-домен>.onrender.com/"
+    while True:
+        try:
+            requests.get(url)
+        except Exception as e:
+            print(f"Ping error: {e}")
+        time.sleep(300)  # каждые 5 минут
+# =======================
+
+# Пересылка сообщений админу
 @dp.message_handler(content_types=ContentType.ANY)
 async def forward_to_admin(message: types.Message):
     if message.text:
@@ -49,6 +65,8 @@ def run_bot():
     executor.start_polling(dp, skip_updates=True)
 
 if __name__ == "__main__":
+    threading.Thread(target=keep_alive, daemon=True).start()  # запуск автопинга
     Thread(target=run_flask).start()
     run_bot()
-            
+
+
